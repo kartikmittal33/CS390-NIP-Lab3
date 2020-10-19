@@ -23,8 +23,8 @@ tf.random.set_seed(1618)
 # tf.logging.set_verbosity(tf.logging.ERROR)   # Uncomment for TF1.
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-CONTENT_IMG_PATH = "ny.jpg"
-STYLE_IMG_PATH = "starry.jpg"
+CONTENT_IMG_PATH = "gate"
+STYLE_IMG_PATH = "composition"
 
 CONTENT_IMG_H = 500
 CONTENT_IMG_W = 500
@@ -32,12 +32,14 @@ CONTENT_IMG_W = 500
 STYLE_IMG_H = 500
 STYLE_IMG_W = 500
 
-CONTENT_WEIGHT = 0.05  # Alpha weight.
-STYLE_WEIGHT = 5.0  # Beta weight.
+CONTENT_WEIGHT = 0.005  # Alpha weight.
+STYLE_WEIGHT = 7.0  # Beta weight.
 TOTAL_WEIGHT = 1.0
 LOSS_WEIGHT = 1.25
 
-TRANSFER_ROUNDS = 10
+TRANSFER_ROUNDS = 5
+
+NUM_OF_FILTERS = 3
 
 # =============================<Helper Fuctions>=================================
 '''
@@ -64,8 +66,7 @@ def gramMatrix(x):
 # ========================<Loss Function Builder Functions>======================
 
 def styleLoss(style, gen):
-    height, width, channels = style.get_shape().as_list()
-    return K.sum(K.square(gramMatrix(style) - gramMatrix(gen))) / (4. * (channels ** 2) * (width * height) ** 2)
+    return K.sum(K.square(gramMatrix(style) - gramMatrix(gen))) / (4. * (NUM_OF_FILTERS ** 2) * (CONTENT_IMG_H * CONTENT_IMG_W) ** 2)
 
 
 def contentLoss(content, gen):
@@ -85,12 +86,14 @@ def totalLoss(x):
 # =========================<Pipeline Functions>==================================
 
 def getRawData():
+    content_path = CONTENT_IMG_PATH + ".jpg"
+    style_path = STYLE_IMG_PATH + ".jpg"
     print("   Loading images.")
-    print("      Content image URL:  \"%s\"." % CONTENT_IMG_PATH)
-    print("      Style image URL:    \"%s\"." % STYLE_IMG_PATH)
-    cImg = load_img(CONTENT_IMG_PATH)
+    print("      Content image URL:  \"%s\"." % content_path)
+    print("      Style image URL:    \"%s\"." % style_path)
+    cImg = load_img(content_path)
     tImg = cImg.copy()
-    sImg = load_img(STYLE_IMG_PATH)
+    sImg = load_img(style_path)
     print("      Images have been loaded.")
     return (
     (cImg, CONTENT_IMG_H, CONTENT_IMG_W), (sImg, STYLE_IMG_H, STYLE_IMG_W), (tImg, CONTENT_IMG_H, CONTENT_IMG_W))
@@ -164,7 +167,7 @@ def styleTransfer(cData, sData, tData):
     print("   Calculating style loss.")
     for layerName in styleLayerNames:
         styleLayer = outputDict[layerName]
-        styleOutput = styleLayer[0, :, :, :]
+        styleOutput = styleLayer[1, :, :, :]
         genOutput = styleLayer[2, :, :, :]
         loss += styleLoss(styleOutput, genOutput) * STYLE_WEIGHT  # TODO: implement.
     loss += totalLoss(genTensor) * TOTAL_WEIGHT  # TODO: implement.
@@ -183,12 +186,12 @@ def styleTransfer(cData, sData, tData):
         x, tLoss, info = fmin_l_bfgs_b(evaluator.loss,
                                          x,
                                          fprime=evaluator.grads,
-                                         maxfun=20)
+                                         maxfun=500)
 
         print("      Loss: %f." % tLoss)
         img = x.copy().reshape((CONTENT_IMG_H, CONTENT_IMG_W, 3))
         img = deprocessImage(img)
-        saveFile = "result_%d.jpg" % i  # TODO: Implement.
+        saveFile = "%s_%s_%d.jpg" % (CONTENT_IMG_PATH, STYLE_IMG_PATH, i)
         imsave(saveFile, img)   #Uncomment when everything is working right.
         print("      Image saved to \"%s\"." % saveFile)
     print("   Transfer complete.")
