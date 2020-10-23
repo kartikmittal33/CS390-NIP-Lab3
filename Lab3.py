@@ -24,7 +24,7 @@ tf.random.set_seed(1618)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 CONTENT_IMG_PATH = "gate"
-STYLE_IMG_PATH = "composition"
+STYLE_IMG_PATH = "seat"
 
 CONTENT_IMG_H = 500
 CONTENT_IMG_W = 500
@@ -41,6 +41,8 @@ TRANSFER_ROUNDS = 5
 
 NUM_OF_FILTERS = 3
 
+NORMS_MEAN = [103.939, 116.779, 123.68]
+
 # =============================<Helper Fuctions>=================================
 '''
 TODO: implement this.
@@ -49,9 +51,10 @@ This function should take the tensor and re-convert it to an image.
 
 
 def deprocessImage(img):
-    img[:, :, 0] += 103.939
-    img[:, :, 1] += 116.779
-    img[:, :, 2] += 123.68
+    img = img.copy().reshape((CONTENT_IMG_H, CONTENT_IMG_W, 3))
+    img[:, :, 0] += NORMS_MEAN[0]
+    img[:, :, 1] += NORMS_MEAN[1]
+    img[:, :, 2] += NORMS_MEAN[2]
     x = img[:, :, ::-1]
     x = np.clip(x, 0, 255).astype('uint8')
     return x
@@ -113,15 +116,15 @@ def preprocessData(raw):
 
 class Evaluator(object):
 
-    def __init__(self, fetch_loss_and_grads):
+    def __init__(self, loss_and_grads):
         self.loss_value = None
         self.grads_values = None
-        self.fetch_loss_and_grads = fetch_loss_and_grads
+        self.loss_and_grads = loss_and_grads
 
     def loss(self, x):
         assert self.loss_value is None
         x = x.reshape((1, CONTENT_IMG_H, CONTENT_IMG_W, 3))
-        outs = self.fetch_loss_and_grads([x])
+        outs = self.loss_and_grads([x])
 
         loss_value = outs[0]
         grad_values = outs[1].flatten().astype('float64')
@@ -173,24 +176,23 @@ def styleTransfer(cData, sData, tData):
     loss += totalLoss(genTensor) * TOTAL_WEIGHT  # TODO: implement.
     # TODO: Setup gradients or use K.gradients().
     gradients = K.gradients(loss, genTensor)[0]
-    fetch_loss_and_grads = K.function([genTensor], [loss, gradients])
+    loss_and_grads = K.function([genTensor], [loss, gradients])
 
-    evaluator = Evaluator(fetch_loss_and_grads)
-    x = tData.flatten()
+    evaluator = Evaluator(loss_and_grads)
+    tData = tData.flatten()
 
     print("   Beginning transfer.")
     for i in range(TRANSFER_ROUNDS):
         print("   Step %d." % i)
         # TODO: perform gradient descent using fmin_l_bfgs_b.
 
-        x, tLoss, info = fmin_l_bfgs_b(evaluator.loss,
-                                         x,
+        tData, tLoss, info = fmin_l_bfgs_b(evaluator.loss,
+                                         tData,
                                          fprime=evaluator.grads,
                                          maxfun=500)
 
         print("      Loss: %f." % tLoss)
-        img = x.copy().reshape((CONTENT_IMG_H, CONTENT_IMG_W, 3))
-        img = deprocessImage(img)
+        img = deprocessImage(tData)
         saveFile = "%s_%s_%d.jpg" % (CONTENT_IMG_PATH, STYLE_IMG_PATH, i)
         imsave(saveFile, img)   #Uncomment when everything is working right.
         print("      Image saved to \"%s\"." % saveFile)
